@@ -8,7 +8,6 @@ This project demonstrates a complete observability stack with:
 - **Flask Application** generating sample telemetry data
 
 ## Architecture
-
 +--------------------+
 |   Flask App        |
 |  (OpenTelemetry)   |
@@ -45,7 +44,6 @@ This project demonstrates a complete observability stack with:
      | - Metrics from Prometheus        |
      | - Logs from Loki                 |
      +----------------------------------+
-
 
 ## Prerequisites
 
