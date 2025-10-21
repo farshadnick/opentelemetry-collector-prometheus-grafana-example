@@ -9,16 +9,43 @@ This project demonstrates a complete observability stack with:
 
 ## Architecture
 
-```
-Flask App (Traces, Metrics, Logs)
-        ↓
-OpenTelemetry Collector
-        ↓
-   ├─→ Prometheus (Metrics)
-   └─→ Loki (Logs)
-        ↓
-    Grafana (Visualization)
-```
++--------------------+
+|   Flask App        |
+|  (OpenTelemetry)   |
+|                    |
+|  - OTLP Export     |----> gRPC/HTTP (4317/4318)
+|  - /metrics        |----> Prometheus Scrape
++---------+----------+
+          |
+          v
++---------+----------+
+| OpenTelemetry      |
+|     Collector      |
+|                    |
+| Receivers:         |
+|   • OTLP           |
+|   • Prometheus     |
+| Processors:        |
+|   • batch          |
+| Exporters:         |
+|   • Prometheus --> +------------------+
+|   • Loki       --> +--------------+   |
++---------+----------+              |   |
+          |                         |   |
+          v                         v   v
++---------+----------+     +--------+--------+
+|   Prometheus       |     |      Loki       |
+| (Metrics Storage)  |     |  (Logs Storage) |
++---------+----------+     +--------+--------+
+          |                         |
+          |                         |
+          v                         v
+     +----+-------------------------+----+
+     |            Grafana               |
+     | - Metrics from Prometheus        |
+     | - Logs from Loki                 |
+     +----------------------------------+
+
 
 ## Prerequisites
 
