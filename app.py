@@ -12,9 +12,35 @@ from opentelemetry._logs import set_logger_provider
 from opentelemetry.sdk._logs import LoggerProvider, LoggingHandler
 from opentelemetry.sdk._logs.export import BatchLogRecordProcessor
 from opentelemetry.exporter.otlp.proto.grpc._log_exporter import OTLPLogExporter
+import sentry_sdk
+from sentry_sdk.integrations.flask import FlaskIntegration
+from sentry_sdk.integrations.logging import LoggingIntegration
 import logging
 import random
 import time
+import os
+
+# Initialize Sentry
+sentry_dsn = os.getenv('SENTRY_DSN', '')
+if sentry_dsn:
+    sentry_logging = LoggingIntegration(
+        level=logging.INFO,        # Capture info and above as breadcrumbs
+        event_level=logging.ERROR  # Send errors as events
+    )
+    
+    sentry_sdk.init(
+        dsn=sentry_dsn,
+        integrations=[
+            FlaskIntegration(),
+            sentry_logging,
+        ],
+        traces_sample_rate=1.0,
+        environment="production",
+        release="simple-app@1.0.0",
+    )
+    print(f"✓ Sentry initialized")
+else:
+    print("⚠ Sentry DSN not configured")
 
 # Configure OpenTelemetry Resource
 resource = Resource.create({"service.name": "simple-app"})
@@ -115,7 +141,13 @@ def hello():
             logger.error("Simulated error occurred at / endpoint", extra={"endpoint": "/", "error_type": "simulated"})
             error_counter.add(1, {"endpoint": "/", "error_type": "simulated"})
             span.set_status(trace.Status(trace.StatusCode.ERROR))
-            return jsonify({"error": "Simulated error"}), 500
+            
+            # Capture exception in Sentry
+            try:
+                raise Exception("Simulated error at / endpoint")
+            except Exception as e:
+                sentry_sdk.capture_exception(e)
+                return jsonify({"error": "Simulated error"}), 500
         
         logger.info("Successfully processed request to / endpoint")
         return jsonify({"message": "Hello, OpenTelemetry!"})
@@ -162,7 +194,41 @@ def error_endpoint():
         
         logger.error("Intentional error raised at /error endpoint", extra={"endpoint": "/error", "status_code": 500})
         
-        return jsonify({"error": "Simulated error"}), 500
+        # Capture in Sentry with context
+        with sentry_sdk.push_scope() as scope:
+            scope.set_tag("endpoint", "/error")
+            scope.set_tag("error_type", "intentional")
+            scope.set_context("request_info", {
+                "endpoint": "/error",
+                "method": "GET",
+                "intentional": True
+            })
+            
+            try:
+                raise ValueError("Intentional error for testing Sentry integration")
+            except ValueError as e:
+                sentry_sdk.capture_exception(e)
+                return jsonify({"error": "Simulated error"}), 500
+
+@app.route('/sentry-test')
+def sentry_test():
+    """Test endpoint to verify Sentry is working"""
+    logger.info("Sentry test endpoint called")
+    
+    # Send a test message
+    sentry_sdk.capture_message("Sentry test message from Flask app", level="info")
+    
+    # Send a test error
+    try:
+        1 / 0
+    except ZeroDivisionError as e:
+        sentry_sdk.capture_exception(e)
+    
+    return jsonify({
+        "message": "Sentry test completed",
+        "sentry_enabled": bool(sentry_dsn),
+        "check_sentry_dashboard": "http://localhost:9000"
+    })
 
 if __name__ == '__main__':
     logger.info("Starting Flask application on port 5000")

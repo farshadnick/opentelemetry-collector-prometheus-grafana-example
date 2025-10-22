@@ -8,8 +8,10 @@ services:
       - "5000:5000"
     depends_on:
       - otel-collector
+      - redis
     environment:
       - OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4317
+      - SENTRY_DSN=http://5a9b85bb26024e7ea7f60e10f5d0d29f@sentry:9000/1
     networks:
       - monitoring
 
@@ -27,6 +29,7 @@ services:
     depends_on:
       - prometheus
       - loki
+      - sentry
     networks:
       - monitoring
 
@@ -76,6 +79,87 @@ services:
     networks:
       - monitoring
 
+  # Redis (for Sentry)
+  redis:
+    image: redis:7-alpine
+    volumes:
+      - redis-data:/data
+    networks:
+      - monitoring
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  # PostgreSQL (for Sentry)
+  postgres:
+    image: postgres:15-alpine
+    environment:
+      POSTGRES_USER: sentry
+      POSTGRES_PASSWORD: sentry
+      POSTGRES_DB: sentry
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    networks:
+      - monitoring
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U sentry"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # Sentry
+  sentry:
+    image: sentry:latest
+    depends_on:
+      - redis
+      - postgres
+    environment:
+      SENTRY_SECRET_KEY: 'your-secret-key-change-this-in-production'
+      SENTRY_POSTGRES_HOST: postgres
+      SENTRY_DB_USER: sentry
+      SENTRY_DB_PASSWORD: sentry
+      SENTRY_REDIS_HOST: redis
+    ports:
+      - "9000:9000"
+    volumes:
+      - sentry-data:/var/lib/sentry/files
+    networks:
+      - monitoring
+
+  # Sentry Cron
+  sentry-cron:
+    image: sentry:latest
+    depends_on:
+      - redis
+      - postgres
+    command: run cron
+    environment:
+      SENTRY_SECRET_KEY: 'your-secret-key-change-this-in-production'
+      SENTRY_POSTGRES_HOST: postgres
+      SENTRY_DB_USER: sentry
+      SENTRY_DB_PASSWORD: sentry
+      SENTRY_REDIS_HOST: redis
+    networks:
+      - monitoring
+
+  # Sentry Worker
+  sentry-worker:
+    image: sentry:latest
+    depends_on:
+      - redis
+      - postgres
+    command: run worker
+    environment:
+      SENTRY_SECRET_KEY: 'your-secret-key-change-this-in-production'
+      SENTRY_POSTGRES_HOST: postgres
+      SENTRY_DB_USER: sentry
+      SENTRY_DB_PASSWORD: sentry
+      SENTRY_REDIS_HOST: redis
+    networks:
+      - monitoring
+
 networks:
   monitoring:
     driver: bridge
@@ -84,4 +168,7 @@ volumes:
   prometheus-data:
   grafana-data:
   loki-data:
+  redis-data:
+  postgres-data:
+  sentry-data:
 

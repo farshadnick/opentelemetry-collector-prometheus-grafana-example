@@ -33,13 +33,17 @@ exporters:
     endpoint: http://loki:3100/loki/api/v1/push
     tls:
       insecure: true
+  
+  sentry:
+    dsn: http://5a9b85bb26024e7ea7f60e10f5d0d29f@sentry:9000/1
+    environment: production
 
 service:
   pipelines:
     traces:
       receivers: [otlp]
       processors: [batch]
-      exporters: [debug, otlp]
+      exporters: [debug, otlp, sentry]
     
     metrics:
       receivers: [otlp]
